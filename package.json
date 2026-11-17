@@ -1,0 +1,20 @@
+{
+  "name": "college-erp",
+  "version": "1.0.0",
+  "description": "Full-Stack College Student Management & Fee Management System",
+  "private": true,
+  "scripts": {
+    "start": "npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "seed": "cd backend && npm run seed",
+    "build": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "college-erp",
+    "fee-management",
+    "student-management"
+  ],
+  "author": "",
+  "license": "ISC"
+}

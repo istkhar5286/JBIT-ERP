@@ -1,0 +1,23 @@
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build files
+dist/
+build/
+
+# Logs
+*.log
+
+# Private uploads
+uploads/
+**/uploads/
+
+# Editor files
+.vscode/
+.idea/
