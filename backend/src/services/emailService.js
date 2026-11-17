@@ -1,90 +1,51 @@
-import nodemailer from 'nodemailer';
+
+
 import { ENV } from '../config/env.js';
 
-let transporter = null;
 export let lastSentOtpForTesting = {};
 
-// Initialize Nodemailer transporter
-const getTransporter = () => {
-  if (transporter) return transporter;
-
-  const hasCredentials = !!(ENV.EMAIL.USER && ENV.EMAIL.PASS);
-
-  if (hasCredentials) {
-    // In local development, bypass certificate chain validation to resolve self-signed certificate errors.
-    // In production, TLS certificate verification is enforced. Can also be explicitly toggled via SMTP_REJECT_UNAUTHORIZED.
-    const isProduction = ENV.NODE_ENV === 'production';
-    const rejectUnauthorized = process.env.SMTP_REJECT_UNAUTHORIZED !== undefined
-      ? process.env.SMTP_REJECT_UNAUTHORIZED === 'true'
-      : isProduction;
-
-    transporter = nodemailer.createTransport({
-      host: ENV.EMAIL.HOST || 'smtp.gmail.com',
-      port: ENV.EMAIL.PORT || 587,
-      secure: ENV.EMAIL.SECURE ?? false,
-      auth: {
-        user: ENV.EMAIL.USER,
-        pass: ENV.EMAIL.PASS
-      },
-      tls: {
-        rejectUnauthorized
-      }
-    });
-  }
-  return transporter;
-};
-
-/**
- * Determine authoritative Sender Address
- * The sender is ALWAYS the college's configured institutional SMTP account,
- * NEVER the student's email address.
- */
 export const getSenderAddress = () => {
-  if (ENV.EMAIL.USER) {
-    return `"${ENV.COLLEGE.NAME}" <${ENV.EMAIL.USER}>`;
-  }
-  return ENV.EMAIL.FROM || `"${ENV.COLLEGE.NAME}" <noreply@jbit.edu.in>`;
+  return `"${ENV.COLLEGE.NAME}" <${ENV.EMAIL.USER}>`;
 };
 
-/**
- * Send an email securely.
- * - Sender (from): Always the college's configured SMTP account.
- * - Recipient (to): Dynamically set to the registered student's entered email.
- * Never throws an uncaught error that could leak OTP or crash request handlers.
- */
 const sendEmail = async ({ to, subject, html, text }) => {
   const recipient = (to || '').trim().toLowerCase();
-  const sender = getSenderAddress();
+  const apiKey = process.env.BREVO_API_KEY;
 
-  if (!recipient) {
-    console.error('[EmailService] Cannot send email: Recipient address is missing.');
+  if (!recipient || !apiKey || !ENV.EMAIL.USER) {
+    console.error('[EmailService] Missing recipient, Brevo API key, or verified sender.');
     return false;
   }
 
   try {
-    const client = getTransporter();
-    if (client) {
-      await client.sendMail({
-        from: sender,
-        to: recipient,
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: {
+          name: ENV.COLLEGE.NAME,
+          email: ENV.EMAIL.USER
+        },
+        to: [{ email: recipient }],
         subject,
-        text,
-        html
-      });
-      console.log(`[EmailService] ✅ Email delivered to [${recipient}] from college sender [${sender}]`);
-      return true;
-    } else {
-      console.log(`[EmailService] ✉️  SIMULATED EMAIL DISPATCH:
-   -> From (College Sender): [${sender}]
-   -> To (Recipient):        [${recipient}]
-   -> Subject:               "${subject}"
-   (Live delivery requires EMAIL_USER & EMAIL_PASS set in backend/.env)`);
-      return true;
+        textContent: text,
+        htmlContent: html
+      })
+    });
+
+    if (!response.ok) {
+      console.error(`[EmailService] Brevo delivery failed. HTTP status: ${response.status}`);
+      return false;
     }
+
+    console.log(`[EmailService] Email accepted by Brevo for ${recipient}`);
+    return true;
   } catch (err) {
-    // Log safe error without exposing credentials or OTP content
-    console.error(`[EmailService] ⚠️ SMTP delivery issue for [${recipient}]: ${err.message}`);
-    // Do not throw to avoid revealing delivery infrastructure details or leaking OTPs
+    console.error('[EmailService] Brevo API connection failed:', err.message);
     return false;
   }
 };
